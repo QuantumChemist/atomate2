@@ -23,6 +23,8 @@ from atomate2.vasp.jobs.base import BaseVaspMaker
 from atomate2.vasp.sets.core import StaticSetGenerator
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import numpy as np
     from emmet.core.math import Matrix3D
 
@@ -260,6 +262,7 @@ def run_phonon_displacements(
     structure: Structure,
     supercell_matrix,
     phonon_maker: BaseVaspMaker | ForceFieldStaticMaker = None,
+    prev_vasp_dir: str | Path = None,
 ):
     """
     Run phonon displacements.
@@ -274,7 +277,9 @@ def run_phonon_displacements(
     supercell_matrix: Matrix3D
         supercell matrix for meta data
     phonon_maker : .BaseVaspMaker
-        A VaspMaker to use to generate the phonon jobs.
+        A VaspMaker to use to generate the elastic relaxation jobs.
+    prev_vasp_dir : str or Path or None
+        A previous vasp calculation directory to use for copying outputs.
     """
     if phonon_maker is None:
         phonon_maker = PhononDisplacementMaker()
@@ -284,11 +289,13 @@ def run_phonon_displacements(
         "forces": [],
         "uuids": [],
         "dirs": [],
-        # "displaced_structures": [],
     }
 
     for i, displacement in enumerate(displacements):
-        phonon_job = phonon_maker.make(displacement)
+        if prev_vasp_dir is not None:
+            phonon_job = phonon_maker.make(displacement, prev_vasp_dir=prev_vasp_dir)
+        else:
+            phonon_job = phonon_maker.make(displacement)
         phonon_job.append_name(f" {i + 1}/{len(displacements)}")
 
         # we will add some meta data
@@ -309,7 +316,6 @@ def run_phonon_displacements(
         outputs["uuids"].append(phonon_job.output.uuid)
         outputs["dirs"].append(phonon_job.output.dir_name)
         outputs["forces"].append(phonon_job.output.output.forces)
-        # outputs["displaced_structures"].append(displacement)
 
     displacement_flow = Flow(phonon_jobs, outputs)
     return Response(replace=displacement_flow)
@@ -349,10 +355,9 @@ class PhononDisplacementMaker(BaseVaspMaker):
     """
 
     name: str = "phonon static"
-
     input_set_generator: VaspInputGenerator = field(
         default_factory=lambda: StaticSetGenerator(
-            user_kpoints_settings={"grid_density": 7000},
+            user_kpoints_settings={"reciprocal_density": 100},
             user_incar_settings={
                 "IBRION": 2,
                 "ISIF": 3,
@@ -363,7 +368,7 @@ class PhononDisplacementMaker(BaseVaspMaker):
                 "ALGO": "Normal",
                 "NSW": 0,
                 "LCHARG": False,
-                "ISMEAR": 0,
             },
+            auto_ispin=True,
         )
     )

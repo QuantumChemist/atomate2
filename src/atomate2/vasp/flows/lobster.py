@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from jobflow import Flow, Maker
 from monty.dev import requires
 
+from atomate2.forcefields.jobs import ForceFieldRelaxMaker
 from atomate2.lobster.jobs import LobsterMaker
 from atomate2.vasp.flows.core import DoubleRelaxMaker, UniformBandStructureMaker
 from atomate2.vasp.jobs.core import NonSCFMaker, RelaxMaker, StaticMaker
@@ -18,7 +19,6 @@ from atomate2.vasp.jobs.lobster import (
     update_user_incar_settings_maker,
 )
 from atomate2.vasp.sets.core import NonSCFSetGenerator, StaticSetGenerator
-from atomate2.forcefields.jobs import ForceFieldRelaxMaker
 
 try:
     import ijson
@@ -31,7 +31,9 @@ except ImportError:
 
 if TYPE_CHECKING:
     from pathlib import Path
+
     from pymatgen.core import Structure
+
     from atomate2.vasp.jobs.base import BaseVaspMaker
 
 
@@ -185,7 +187,7 @@ class VaspLobsterMaker(Maker):
             jobs.append(delete_wavecars)
 
         return Flow(jobs, output=lobster_jobs.output)
-    
+
 
 @dataclass
 class MlffVaspLobsterMaker(VaspLobsterMaker):
@@ -207,7 +209,7 @@ class MlffVaspLobsterMaker(VaspLobsterMaker):
     name : str
         Name of the flows produced by this maker.
     relax_maker : .ForceFieldRelaxMaker
-        A MLFF based maker to perform a relaxation on the bulk. 
+        A MLFF based maker to perform a relaxation on the bulk.
     lobster_static_maker : .BaseVaspMaker
         A maker to perform the computation of the wavefunction before the static run.
         Cannot be skipped. It can be LOBSTERUNIFORM or LobsterStaticMaker()

@@ -18,6 +18,7 @@ from atomate2.vasp.jobs.lobster import (
     update_user_incar_settings_maker,
 )
 from atomate2.vasp.sets.core import NonSCFSetGenerator, StaticSetGenerator
+from atomate2.forcefields.jobs import ForceFieldRelaxMaker
 
 try:
     import ijson
@@ -32,7 +33,6 @@ if TYPE_CHECKING:
     from pathlib import Path
     from pymatgen.core import Structure
     from atomate2.vasp.jobs.base import BaseVaspMaker
-    from atomate2.forcefields.jobs import ForceFieldRelaxMaker
 
 
 LOBSTER_UNIFORM_MAKER = UniformBandStructureMaker(

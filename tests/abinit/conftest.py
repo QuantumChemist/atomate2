@@ -130,9 +130,9 @@ def check_run_abi(ref_path: str | Path):
 
     user = AbinitInputFile.from_file("run.abi")
     assert user.ndtset == 1, f"'run.abi' has multiple datasets (ndtset={user.ndtset})."
-    with zopen(ref_path / "inputs" / "run.abi.gz") as file:
+    with zopen(ref_path / "inputs" / "run.abi.gz", "rt", encoding="utf-8") as file:
         ref_str = file.read()
-    ref = AbinitInputFile.from_string(ref_str.decode("utf-8"))
+    ref = AbinitInputFile.from_string(ref_str)
     # Ignore the pseudos as the directory depends on the pseudo root directory
     # diffs = user.get_differences(ref, ignore_vars=["pseudos"])
     diffs = _get_differences_tol(user, ref, ignore_vars=["pseudos"])
@@ -284,10 +284,8 @@ def _get_differences_tol(
         self_dataset_dict = dict(self_dataset)
         other_dataset_dict = dict(other_dataset)
         for k in to_ignore:
-            if k in self_dataset_dict:
-                del self_dataset_dict[k]
-            if k in other_dataset_dict:
-                del other_dataset_dict[k]
+            self_dataset_dict.pop(k, None)
+            other_dataset_dict.pop(k, None)
         common_keys = set(self_dataset_dict.keys()).intersection(
             other_dataset_dict.keys()
         )

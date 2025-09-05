@@ -42,6 +42,66 @@ The most important settings to consider are:
   NCORE, KPAR etc.
 - `VASP_VDW_KERNEL_DIR`: The path to the VASP Van der Waals kernel.
 
+## FAQs
+
+<b>How can I update the Custodian handlers used in a VASP job?</b>
+- Every `Maker` which derives from `BaseVaspMaker` (see below) has a `run_vasp_kwargs` kwarg.
+So, for example, to run a `StaticMaker` with only the `VaspErrorHandler` as the custodian handler, you would do this:
+
+```py
+from atomate2.vasp.jobs.core import StaticMaker
+from custodian.vasp.handlers import VaspErrorHandler
+
+maker = StaticMaker(run_vasp_kwargs={"handlers": [VaspErrorHandler]})
+```
+
+<b>How can I change the other Custodian settings used to run VASP?</b>
+- These can be set through `run_vasp_kwargs.custodian_kwargs`:
+
+```py
+maker = StaticMaker(
+    run_vasp_kwargs={
+        "custodian_kwargs": {
+            "max_errors_per_job": 5,
+            "monitor_freq": 100,
+        }
+    }
+)
+```
+For all possible `custodian_kwargs`, see the [`Custodian` class](https://github.com/materialsproject/custodian/blob/aa02baf5bc2a1883c5f8a8b6808340eeae324a99/src/custodian/custodian.py#L68).
+NB: You cannot set the following four `Custodian` fields using `custodian_kwargs`: `handlers`, `jobs`, `validators`, `max_errors`, and `scratch_dir`.
+
+<b>Can I change how VASP is run for each per-`Maker`/`Job`?</b>
+Yes! Still using the `run_vasp_kwargs` and either the `vasp_cmd`, which represents the path to (and including) `vasp_std`, and `vasp_gamma_cmd`, which is the path to `vasp_gam`:
+
+```py
+maker = StaticMaker(run_vasp_kwargs={"vasp_cmd": "/path/to/vasp_std"})
+```
+
+<b>How can I use non-colinear VASP?</b>
+The same method as before applies, you can simply set:
+
+```py
+vasp_ncl_path = "/path/to/vasp_ncl"
+maker = StaticMaker(
+    run_vasp_kwargs={"vasp_cmd": vasp_ncl_path, "vasp_gamma_cmd": vasp_ncl_path}
+)
+```
+
+<b>How can I update the magnetic moments (MAGMOM) tag used to start a calculation?</b>
+You can specify MAGMOM using a `dict` of defined values, such as:
+
+```py
+from pymatgen.io.vasp.sets import MPRelaxSet
+
+vis = MPRelaxSet(user_incar_settings={"MAGMOM": {"In": 0.5, "Ga": 0.5, "As": -0.5}})
+```
+You can also specify different magnetic moments for different oxidation states, such as `{"Ga3+": 0.25}`.
+However, note that `"Ga0+"`, which has been assigned zero-valued oxidation state, is distinct from `"Ga"`, which has not been assigned an oxidation state.
+
+Alternatively, MAGMOM can be set by giving a structure assigned magnetic moments: `structure.add_site_property("magmom", list[float])`.
+This will override the default MAGMOM settings of a VASP input set.
+
 (vasp_workflows)=
 
 ## List of VASP workflows
@@ -97,7 +157,25 @@ functional. Full structural relaxation is performed.
 ### Double Relax
 
 Perform two back-to-back relaxations. This can often help avoid errors arising from
-Pulay stress.
+[Pulay stress](https://www.vasp.at/wiki/index.php/Pulay_stress).
+
+In short: While the cell size, shape, symmetry, etc. can change during a relaxation, the *k* point grid does not change with it.
+Additionally, the number of plane waves is held constant during a relaxation.
+Both features lead to artificial (numerical) stress due to under-convergence of a relaxation with respect to the basis set.
+To avoid this, we perform a single relaxation, and input its final structure to another relaxation calculation.
+At the start of the second relaxation, the *k*-point mesh and plane waves are adjusted to reflect the new symmetry of the cell.
+
+### Materials Project structure optimization
+
+The Materials Project hosts a large database of, among other physical properties, optimized structures and their associated total energy, formation enthalpy, and basic electronic structure properties.
+To generate this data, the Materials Project uses a simple double-relaxation followed by a final static calculation.
+While in principle, if the second relaxation calculation is converged, a final static calculation would not be needed.
+However, the second relaxation may have residual Pulay stress, and VASP averages some electronic structure data ([like the density of states](https://www.vasp.at/wiki/index.php/DOSCAR)) during a relaxation.
+Thus we need to perform a final single-point (static) calculation, usually using the corrected tetrahedron method (`ISMEAR=-5`) to ensure accurate electronic structure properties.
+
+The workflows used to produce PBE GGA or GGA+*U* and r<sup>2</sup>SCAN thermodynamic data are, respectively, `MPGGADoubleRelaxStaticMaker` and `MPMetaGGADoubleRelaxStaticMaker` in `atomate2.vasp.flows.mp`.
+Moving forward, the Materials Project prefers r<sup>2</sup>SCAN calculations, but maintains its older set of GGA-level data which currently has wider coverage.
+For documentation about the calculation parameters used, see the [Materials Project documentation.](https://docs.materialsproject.org/methodology/materials-methodology/calculation-details)
 
 ### Band Structure
 
@@ -616,6 +694,33 @@ written:
 static_job.maker.input_set_generator.user_incar_settings["LOPTICS"] = True
 ```
 
+To update *k*-points, use the `user_kpoints_settings` keyword argument of an input set generator.
+You can supply either a `pymatgen.io.vasp.inputs.Kpoints` object, or a `dict` containing certain [keys](https://github.com/materialsproject/pymatgen/blob/b54ac3e65e46b876de40402e8da59f551fb7d005/src/pymatgen/io/vasp/sets.py#L812).
+We generally recommend the former approach unless the user is familiar with the specific style of *k*-point updates used by `pymatgen`.
+For example, to use just the $\Gamma$ point:
+
+```py
+from pymatgen.io.vasp.inputs import Kpoints
+from atomate2.vasp.sets.core import StaticSetGenerator
+from atomate2.vasp.jobs.core import StaticMaker
+
+custom_gamma_only_set = StaticSetGenerator(user_kpoints_settings=Kpoints())
+gamma_only_static_maker = StaticMaker(input_set_generator=custom_gamma_only_set)
+```
+
+For those who are more familiar with manual *k*-point generation, you can use a VASP-style KPOINTS file or string to set the *k*-points as well:
+
+```py
+kpoints = Kpoints.from_str(
+    """Uniform density Monkhorst-Pack mesh
+0
+Monkhorst-pack
+5 5 5
+"""
+)
+custom_static_set = StaticSetGenerator(user_kpoints_settings=kpoints)
+```
+
 Finally, sometimes you have a workflow containing many VASP jobs. In this case it can be
 tedious to update the input sets for each job individually. Atomate2 provides helper
 functions called "powerups" that can apply settings updates to all VASP jobs in a flow.
@@ -663,8 +768,7 @@ modification of several additional VASP settings, such as the k-points
 
 If a greater degree of flexibility is needed, the user can define a default set of input
 arguments (`config_dict`) that can be provided to the {obj}`.VaspInputGenerator`.
-By default, the {obj}`.VaspInputGenerator` uses a base set of VASP input parameters
-from {obj}`.BaseVaspSet.yaml`, which each `Maker` is built upon. If desired, the user can
+By default, the {obj}`.VaspInputGenerator` uses a base set of VASP input parameters (`atomate2.vasp.sets.base._BASE_VASP_SET`), which each `Maker` is built upon. If desired, the user can
 define a custom `.yaml` file that contains a different base set of VASP settings to use.
 An example of how this can be done is shown below for a representative static
 calculation.

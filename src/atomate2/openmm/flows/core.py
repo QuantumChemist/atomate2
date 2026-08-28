@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from emmet.core.openmm import Calculation, OpenMMInterchange, OpenMMTaskDocument
-from jobflow import Flow, Job, Response
+from emmet.core.openmm import Calculation, OpenMMTaskDocument
+from jobflow import Flow, Job, Maker, Response
 from monty.json import MontyDecoder, MontyEncoder
 
 from atomate2.openmm.jobs.base import openmm_job
@@ -18,6 +18,7 @@ from atomate2.openmm.utils import create_list_summing_to
 if TYPE_CHECKING:
     from openff.interchange import Interchange
 
+    from atomate2.openmm.interchange import OpenMMInterchange
     from atomate2.openmm.jobs.base import BaseOpenMMMaker
 
 
@@ -68,7 +69,7 @@ def collect_outputs(
 
 
 @dataclass
-class OpenMMFlowMaker:
+class OpenMMFlowMaker(Maker):
     """Run a production simulation.
 
     This flexible flow links together any flows of OpenMM jobs in

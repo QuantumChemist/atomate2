@@ -17,6 +17,8 @@ from atomate2.common.schemas.gruneisen import GruneisenParameterDocument
 from atomate2.common.schemas.phonons import PhononBSDOSDoc
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pymatgen.core.structure import Structure
 
     from atomate2.common.flows.phonons import BasePhononMaker
@@ -77,20 +79,20 @@ def run_phonon_jobs(
     Phonon Jobs or Symmetry of the optimized structures.
     """
     symmetry = []
-    for st in opt_struct:
-        sga = SpacegroupAnalyzer(opt_struct[st], symprec=symprec)
+    for struct in opt_struct.values():
+        sga = SpacegroupAnalyzer(struct, symprec=symprec)
         symmetry.append(int(sga.get_space_group_number()))
     set_symmetry = list(set(symmetry))
     if len(set_symmetry) == 1:
         jobs = []
         phonon_yaml_dirs = dict.fromkeys(("ground", "plus", "minus"), None)
         phonon_imaginary_modes = dict.fromkeys(("ground", "plus", "minus"), None)
-        for st in opt_struct:
+        for st, struct in opt_struct.items():
             # phonon run for all 3 optimized structures (ground state, expanded, shrunk)
             phonon_kwargs = {}
             if prev_calc_dir_argname is not None:
                 phonon_kwargs[prev_calc_dir_argname] = prev_dir_dict[st]
-            phonon_job = phonon_maker.make(structure=opt_struct[st], **phonon_kwargs)
+            phonon_job = phonon_maker.make(structure=struct, **phonon_kwargs)
             phonon_job.append_name(f" {st}")
             # change default phonopy.yaml file name to ensure workflow can be
             # run without having to create folders, thus
@@ -128,11 +130,11 @@ def run_phonon_jobs(
 )
 def compute_gruneisen_param(
     code: str,
-    phonopy_yaml_paths_dict: dict,
-    phonon_imaginary_modes_info: dict,
+    phonopy_yaml_paths_dict: dict[str, Path],
+    phonon_imaginary_modes_info: dict[str, bool],
     kpath_scheme: str,
     symprec: float,
-    mesh: tuple | float = (20, 20, 20),
+    mesh: tuple[int, int, int] | float = (20, 20, 20),
     structure: Structure = None,
     **compute_gruneisen_param_kwargs,
 ) -> GruneisenParameterDocument:

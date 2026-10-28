@@ -5,6 +5,8 @@ docs/_build/*
 docs/_build/*/*
 docs/_build/*/*/*
 docs_build/*
+docs/tutorials/*
+docs/tutorials/*/*
 
 # C extensions
 *.so
@@ -72,3 +74,4 @@ docs/reference/atomate2.*
 *.doctrees*
 
 .ipynb_checkpoints
+.aider*

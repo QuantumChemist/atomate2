@@ -1,27 +1,22 @@
 import pytest
-import torch
 from jobflow import run_locally
 from monty.serialization import loadfn
 
-from atomate2.forcefields.flows.eos import CHGNetEosMaker, M3GNetEosMaker, MACEEosMaker
-
-_mlff_to_maker = {
-    "CHGNet": CHGNetEosMaker,
-    "M3GNet": M3GNetEosMaker,
-    "MACE": MACEEosMaker,
-}
+from atomate2.forcefields.flows.eos import ForceFieldEosMaker
+from atomate2.utils.testing import get_job_uuid_name_map
 
 
-@pytest.mark.parametrize("mlff", list(_mlff_to_maker))
+@pytest.mark.parametrize("mlff", ["CHGNet", "MACE"])
 def test_ml_ff_eos_makers(mlff: str, si_structure, clean_dir, test_dir):
-    # MACE changes the default dtype, ensure consistent dtype here
-    torch.set_default_dtype(torch.float32)
+    maker = ForceFieldEosMaker.from_force_field_name(mlff)
+    job = maker.make(si_structure)
+    for attr in ("initial_relax_maker", "eos_relax_maker"):
+        assert mlff in getattr(maker, attr).force_field_name
 
-    job = _mlff_to_maker[mlff]().make(si_structure)
-    job_to_uuid = {job.name: job.uuid for job in job.jobs}
-    postprocess_uuid = job_to_uuid[f"{mlff} EOS Maker postprocessing"]
+    job_to_uuid = {v: k for k, v in get_job_uuid_name_map(job).items()}
+    post_process_uuid = job_to_uuid[f"{mlff} EOS Maker postprocessing"]
     response = run_locally(job, ensure_success=True)
-    output = response[postprocess_uuid][1].output
+    output = response[post_process_uuid][1].output
 
     ref_data = loadfn(f"{test_dir}/forcefields/eos/{mlff}_Si_eos.json.gz")
 
@@ -30,6 +25,13 @@ def test_ml_ff_eos_makers(mlff: str, si_structure, clean_dir, test_dir):
             assert output["relax"][key] == pytest.approx(ref_data["relax"][key])
         elif isinstance(key, list):
             assert all(
-                output["relax"][key][i] == pytest.approx(value)
-                for i, value in ref_data["relax"][key].items()
+                output["relax"][key][idx] == pytest.approx(value)
+                for idx, value in ref_data["relax"][key].items()
             )
+
+    assert (
+        ForceFieldEosMaker.from_force_field_name(
+            mlff, relax_initial_structure=False
+        ).initial_relax_maker
+        is None
+    )
